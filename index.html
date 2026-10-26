@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a0b0d">
+  <meta name="description" content="Compartilhamento de tela P2P em resolução nativa e até 120 FPS, direto entre amigos.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Discordo · Tela P2P</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235b8cff'/%3E%3Crect x='8' y='9' width='16' height='11' rx='1.5' fill='none' stroke='%230a0b0d' stroke-width='2.4'/%3E%3Cpath d='M12.5 24h7' stroke='%230a0b0d' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body data-view="loading">
+
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Discordo, página inicial">
+      <span class="brand-mark" aria-hidden="true"></span>
+      Discordo
+    </a>
+    <span class="live-badge" id="live-badge" hidden>Ao vivo</span>
+  </header>
+
+  <!-- ===================================================== HOST: configuração -->
+  <section class="view view-setup" data-view="host-setup" hidden>
+    <div class="setup">
+      <div class="setup-intro">
+        <p class="eyebrow">P2P direto · sem servidor de mídia</p>
+        <h1>Sua tela em resolução nativa, a 60 ou 120 FPS.</h1>
+        <p class="lede">
+          O vídeo sai do seu navegador direto para o dos seus amigos. Cada espectador recebe a
+          própria qualidade, ajustada à rede dele — quem tem internet boa não paga pela de quem não tem.
+        </p>
+
+        <form id="join-form" class="join" autocomplete="off">
+          <label for="join-input" class="field-label">Recebeu um link?</label>
+          <div class="join-row">
+            <input id="join-input" class="input" type="text" inputmode="url" spellcheck="false"
+                   placeholder="Cole o link ou o código da sala">
+            <button type="submit" class="btn btn-ghost">Entrar</button>
+          </div>
+        </form>
+      </div>
+
+      <form id="host-form" class="card setup-card" novalidate>
+        <h2 class="card-title">Configurar transmissão</h2>
+
+        <div class="field">
+          <span class="field-label" id="mode-label">Modo de qualidade</span>
+          <div class="segmented" role="radiogroup" aria-labelledby="mode-label">
+            <label><input type="radio" name="qualityMode" value="auto" checked><span>Automático inteligente</span></label>
+            <label><input type="radio" name="qualityMode" value="manual"><span>Manual</span></label>
+          </div>
+          <p class="field-hint" data-mode-hint></p>
+        </div>
+
+        <div class="field-grid">
+          <label class="field">
+            <span class="field-label">Resolução máxima</span>
+            <select class="select" name="resolution" data-options="resolution"></select>
+          </label>
+
+          <div class="field">
+            <span class="field-label" id="fps-label">FPS alvo</span>
+            <div class="segmented" role="radiogroup" aria-labelledby="fps-label">
+              <label><input type="radio" name="fps" value="60" checked><span>60</span></label>
+              <label><input type="radio" name="fps" value="120"><span>120</span></label>
+            </div>
+          </div>
+
+          <label class="field">
+            <span class="field-label" data-bitrate-label>Teto de bitrate</span>
+            <select class="select" name="maxBitrate" data-options="maxBitrate"></select>
+          </label>
+
+          <label class="field">
+            <span class="field-label">Codec</span>
+            <select class="select" name="codec" data-options="codec"></select>
+          </label>
+        </div>
+
+        <details class="advanced">
+          <summary>Avançado</summary>
+          <div class="field-grid">
+            <label class="field">
+              <span class="field-label">Sob pressão de rede/CPU</span>
+              <select class="select" name="degradationPreference" data-options="degradationPreference"></select>
+            </label>
+            <label class="field">
+              <span class="field-label">Tipo de conteúdo</span>
+              <select class="select" name="contentHint" data-options="contentHint"></select>
+            </label>
+          </div>
+          <label class="check">
+            <input type="checkbox" name="captureAudio" checked>
+            <span>Capturar áudio do sistema ou da aba, sem filtros de voz</span>
+          </label>
+        </details>
+
+        <button type="submit" id="start-btn" class="btn btn-primary btn-lg">Iniciar transmissão</button>
+        <p id="host-support" class="notice" role="alert" hidden></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- ===================================================== HOST: ao vivo -->
+  <section class="view view-live" data-view="host-live" hidden>
+    <div class="stage host-stage">
+      <video id="host-preview" muted autoplay playsinline webkit-playsinline disablepictureinpicture></video>
+      <p class="preview-off" id="preview-off" hidden>Prévia oculta para economizar CPU. A transmissão continua.</p>
+
+      <div class="hud" id="host-hud" aria-label="Estatísticas da captura">
+        <div class="hud-main"><span data-hud="resolution">—</span> <span class="hud-at">@</span> <span data-hud="fps">—</span></div>
+        <div class="hud-row"><span class="hud-k">Espectadores</span><span data-hud="viewers">0</span></div>
+        <div class="hud-row"><span class="hud-k">Upload total</span><span data-hud="upload">—</span></div>
+        <div class="hud-row"><span class="hud-k">Áudio</span><span data-hud="audio">—</span></div>
+        <div class="hud-health"><span class="health-dot"></span><span data-hud="health">—</span></div>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <div class="panel-block">
+        <div class="panel-head">
+          <h2>Sala <code id="room-code"></code></h2>
+        </div>
+        <div class="share-row">
+          <input id="share-link" class="input" type="text" readonly aria-label="Link da sala">
+          <button type="button" id="copy-link" class="btn btn-primary">Copiar</button>
+        </div>
+        <button type="button" id="share-native" class="btn btn-ghost btn-block" hidden>Compartilhar…</button>
+      </div>
+
+      <div class="panel-block">
+        <div class="panel-head">
+          <h2>Espectadores</h2>
+          <span class="count" id="viewer-count">0</span>
+        </div>
+        <ul class="viewer-list" id="viewer-list"></ul>
+        <p class="empty" id="viewer-empty">Ninguém conectado ainda. Envie o link acima.</p>
+      </div>
+
+      <form class="panel-block" id="live-form" autocomplete="off">
+        <div class="panel-head">
+          <h2>Ajustes ao vivo</h2>
+        </div>
+        <div class="field-grid compact">
+          <label class="field">
+            <span class="field-label">Modo</span>
+            <select class="select" name="qualityMode" data-options="qualityMode"></select>
+          </label>
+          <label class="field">
+            <span class="field-label" data-bitrate-label>Teto de bitrate</span>
+            <select class="select" name="maxBitrate" data-options="maxBitrate"></select>
+          </label>
+          <label class="field">
+            <span class="field-label">Resolução</span>
+            <select class="select" name="resolution" data-options="resolution"></select>
+          </label>
+          <label class="field">
+            <span class="field-label">FPS</span>
+            <select class="select" name="fps" data-options="fps"></select>
+          </label>
+          <label class="field">
+            <span class="field-label">Codec</span>
+            <select class="select" name="codec" data-options="codec"></select>
+          </label>
+          <label class="field">
+            <span class="field-label">Sob pressão</span>
+            <select class="select" name="degradationPreference" data-options="degradationPreference"></select>
+          </label>
+          <label class="field span-2">
+            <span class="field-label">Tipo de conteúdo</span>
+            <select class="select" name="contentHint" data-options="contentHint"></select>
+          </label>
+        </div>
+        <p class="field-hint" data-mode-hint></p>
+      </form>
+
+      <div class="panel-actions">
+        <button type="button" id="switch-source" class="btn btn-ghost">Trocar tela</button>
+        <button type="button" id="toggle-preview" class="btn btn-ghost" aria-pressed="false">Ocultar prévia</button>
+        <button type="button" id="stop-broadcast" class="btn btn-danger btn-block">Encerrar transmissão</button>
+      </div>
+    </aside>
+
+    <template id="viewer-item-template">
+      <li class="viewer" data-health="idle">
+        <div class="viewer-head">
+          <span class="health-dot"></span>
+          <span class="viewer-name" data-field="name"></span>
+          <span class="viewer-codec" data-field="codec"></span>
+        </div>
+        <div class="viewer-state" data-field="state"></div>
+        <dl class="viewer-meta">
+          <div><dt>Bitrate</dt><dd data-field="bitrate">—</dd></div>
+          <div><dt>Vídeo</dt><dd data-field="resolution">—</dd></div>
+          <div><dt>RTT</dt><dd data-field="rtt">—</dd></div>
+          <div><dt>Perda</dt><dd data-field="loss">—</dd></div>
+        </dl>
+        <div class="viewer-bar" aria-hidden="true"><span></span></div>
+      </li>
+    </template>
+  </section>
+
+  <!-- ===================================================== VIEWER -->
+  <section class="view view-viewer" data-view="viewer" hidden>
+    <div class="stage viewer-stage" id="viewer-stage" data-state="connecting">
+      <video id="viewer-video" autoplay playsinline webkit-playsinline></video>
+
+      <div class="viewer-status" id="viewer-status" role="status" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="viewer-room">Sala <code id="viewer-room"></code></p>
+        <p id="viewer-status-text">Conectando…</p>
+        <button type="button" class="btn btn-primary" id="viewer-retry" hidden>Tentar novamente</button>
+      </div>
+
+      <button type="button" class="unlock-overlay" id="unlock-overlay" hidden>
+        <span class="unlock-pill">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>
+          Toque para assistir com som
+        </span>
+      </button>
+
+      <div class="hud" id="viewer-hud" aria-label="Estatísticas da transmissão">
+        <div class="hud-main"><span data-hud="resolution">—</span> <span class="hud-at">@</span> <span data-hud="fps">—</span></div>
+        <div class="hud-row"><span class="hud-k">Codec</span><span data-hud="codec">—</span></div>
+        <div class="hud-row"><span class="hud-k">Bitrate</span><span data-hud="bitrate">—</span></div>
+        <div class="hud-row"><span class="hud-k">Áudio</span><span data-hud="audio">—</span></div>
+        <div class="hud-row"><span class="hud-k">RTT</span><span data-hud="rtt">—</span></div>
+        <div class="hud-row"><span class="hud-k">Perda</span><span data-hud="loss">—</span></div>
+        <div class="hud-health"><span class="health-dot"></span><span data-hud="health">—</span></div>
+      </div>
+
+      <div class="controls" id="viewer-controls">
+        <button type="button" class="icon-btn" id="btn-mute" data-muted="false" aria-label="Silenciar" title="Silenciar (M)">
+          <svg class="icon-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <svg class="icon-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16.5 9.5l5 5m0-5l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+        <input type="range" class="volume" id="volume" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+        <span class="controls-spacer"></span>
+        <button type="button" class="icon-btn" id="btn-hud" aria-pressed="true" aria-label="Mostrar ou ocultar estatísticas" title="Estatísticas (H)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V11M12 19V5M19 19v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="btn-pip" aria-label="Picture-in-picture" title="Picture-in-picture" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="btn-fullscreen" aria-label="Tela cheia" title="Tela cheia (F)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== Falha ao carregar o PeerJS -->
+  <section class="view view-fatal" data-view="fatal" hidden>
+    <div class="card fatal-card">
+      <h1>Não foi possível carregar o PeerJS</h1>
+      <p>A biblioteca de sinalização vem de um CDN que parece estar bloqueado ou fora do ar. Desative bloqueadores de conteúdo para este site e recarregue a página.</p>
+      <button type="button" class="btn btn-primary" onclick="location.reload()">Recarregar</button>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
