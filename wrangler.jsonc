@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "discordo",
+  "compatibility_date": "2025-09-01",
+  // Site 100% estático: o Worker só serve os arquivos da raiz do repositório.
+  "assets": {
+    "directory": "./"
+  }
+}
