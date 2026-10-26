@@ -83,6 +83,15 @@
           </label>
         </div>
 
+        <label class="field">
+          <span class="field-label">Áudio</span>
+          <select class="select" name="audioSource" data-options="audioSource"></select>
+          <span class="field-hint">
+            Em “Somente da guia”, escolha uma guia no seletor e deixe marcado “Compartilhar áudio da guia”:
+            só o som dela é transmitido, sem Discord ou notificações do sistema.
+          </span>
+        </label>
+
         <details class="advanced">
           <summary>Avançado</summary>
           <div class="field-grid">
@@ -95,10 +104,6 @@
               <select class="select" name="contentHint" data-options="contentHint"></select>
             </label>
           </div>
-          <label class="check">
-            <input type="checkbox" name="captureAudio" checked>
-            <span>Capturar áudio do sistema ou da aba, sem filtros de voz</span>
-          </label>
         </details>
 
         <button type="submit" id="start-btn" class="btn btn-primary btn-lg">Iniciar transmissão</button>
@@ -113,7 +118,7 @@
       <video id="host-preview" muted autoplay playsinline webkit-playsinline disablepictureinpicture></video>
       <p class="preview-off" id="preview-off" hidden>Prévia oculta para economizar CPU. A transmissão continua.</p>
 
-      <div class="hud" id="host-hud" aria-label="Estatísticas da captura">
+      <div class="hud is-hidden" id="host-hud" aria-label="Estatísticas da captura">
         <div class="hud-main"><span data-hud="resolution">—</span> <span class="hud-at">@</span> <span data-hud="fps">—</span></div>
         <div class="hud-row"><span class="hud-k">Espectadores</span><span data-hud="viewers">0</span></div>
         <div class="hud-row"><span class="hud-k">Upload total</span><span data-hud="upload">—</span></div>
@@ -183,6 +188,7 @@
       <div class="panel-actions">
         <button type="button" id="switch-source" class="btn btn-ghost">Trocar tela</button>
         <button type="button" id="toggle-preview" class="btn btn-ghost" aria-pressed="false">Ocultar prévia</button>
+        <button type="button" id="toggle-stats" class="btn btn-ghost btn-block" aria-pressed="false">Mostrar estatísticas</button>
         <button type="button" id="stop-broadcast" class="btn btn-danger btn-block">Encerrar transmissão</button>
       </div>
     </aside>
@@ -225,7 +231,7 @@
         </span>
       </button>
 
-      <div class="hud" id="viewer-hud" aria-label="Estatísticas da transmissão">
+      <div class="hud is-hidden" id="viewer-hud" aria-label="Estatísticas da transmissão">
         <div class="hud-main"><span data-hud="resolution">—</span> <span class="hud-at">@</span> <span data-hud="fps">—</span></div>
         <div class="hud-row"><span class="hud-k">Codec</span><span data-hud="codec">—</span></div>
         <div class="hud-row"><span class="hud-k">Bitrate</span><span data-hud="bitrate">—</span></div>
@@ -242,7 +248,7 @@
         </button>
         <input type="range" class="volume" id="volume" min="0" max="1" step="0.01" value="1" aria-label="Volume">
         <span class="controls-spacer"></span>
-        <button type="button" class="icon-btn" id="btn-hud" aria-pressed="true" aria-label="Mostrar ou ocultar estatísticas" title="Estatísticas (H)">
+        <button type="button" class="icon-btn" id="btn-hud" aria-pressed="false" aria-label="Mostrar ou ocultar estatísticas" title="Estatísticas (H)">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V11M12 19V5M19 19v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         </button>
         <button type="button" class="icon-btn" id="btn-pip" aria-label="Picture-in-picture" title="Picture-in-picture" hidden>

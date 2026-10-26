@@ -67,6 +67,11 @@ const OPTIONS = Object.freeze({
     ['motion', 'Movimento (jogos, vídeos)'],
     ['detail', 'Detalhe (texto, código)'],
   ],
+  audioSource: [
+    ['tab', 'Somente da guia (navegador)'],
+    ['system', 'Sistema inteiro (tela ou janela)'],
+    ['none', 'Sem áudio'],
+  ],
 });
 
 const STATE_LABELS = Object.freeze({
@@ -138,8 +143,15 @@ function readSettings(form) {
   if (text('codec')) settings.codec = text('codec');
   if (text('degradationPreference')) settings.degradationPreference = text('degradationPreference');
   if (text('contentHint')) settings.contentHint = text('contentHint');
-  if (form.elements.captureAudio) settings.captureAudio = form.elements.captureAudio.checked;
+  if (text('audioSource')) settings.audioSource = text('audioSource');
   return settings;
+}
+
+// Preferências salvas antes do seletor de áudio usavam um checkbox "captureAudio".
+function loadSavedSettings() {
+  const { captureAudio, ...saved } = storage.get('host-settings', {});
+  if (!saved.audioSource && captureAudio === false) saved.audioSource = 'none';
+  return { ...DEFAULT_HOST_SETTINGS, ...saved };
 }
 
 function writeSettings(form, settings) {
@@ -254,7 +266,7 @@ function setupHost() {
   const liveForm = $('#live-form');
   const startButton = $('#start-btn');
 
-  writeSettings(form, { ...DEFAULT_HOST_SETTINGS, ...storage.get('host-settings', {}) });
+  writeSettings(form, loadSavedSettings());
   syncModeLabels(form);
 
   if (!isScreenCaptureSupported()) {
@@ -329,6 +341,12 @@ function setupHost() {
     event.currentTarget.setAttribute('aria-pressed', String(hidden));
   });
 
+  $('#toggle-stats').addEventListener('click', () => {
+    if (!host.hud) return;
+    setHostStatsVisible(!host.hud.visible);
+    storage.set('stats-visible', host.hud.visible);
+  });
+
   $('#stop-broadcast').addEventListener('click', () => host.session?.stop('host-stopped'));
 
   window.addEventListener('pagehide', () => host.session?.stop('host-left'));
@@ -390,6 +408,7 @@ function enterLive(session) {
   session.addEventListener('stream', (event) => {
     if (!preview.hidden) preview.srcObject = event.detail.stream;
     toast('Fonte de captura trocada.', 'success');
+    warnAboutAudio(session);
   });
   session.addEventListener('signaling', (event) => {
     if (event.detail.state === 'reconnecting') toast('Servidor de sinalização caiu. Quem já está assistindo continua; reconectando…', 'warn');
@@ -398,8 +417,28 @@ function enterLive(session) {
   session.addEventListener('ended', (event) => leaveLive(event.detail.reason), { once: true });
 
   host.hud = new StatsHUD($('#host-hud'));
+  setHostStatsVisible(storage.get('stats-visible', false));
   renderHostHud();
   host.hudTimer = setInterval(renderHostHud, 1000);
+  warnAboutAudio(session);
+}
+
+function setHostStatsVisible(visible) {
+  host.hud.setVisible(visible);
+  const button = $('#toggle-stats');
+  button.textContent = visible ? 'Ocultar estatísticas' : 'Mostrar estatísticas';
+  button.setAttribute('aria-pressed', String(visible));
+}
+
+function warnAboutAudio(session) {
+  const { audioSource } = session.settings;
+  const { surface, hasAudio } = session.summary();
+  if (audioSource === 'none' || hasAudio) return;
+  const message =
+    audioSource === 'tab' && surface && surface !== 'browser'
+      ? 'Sem áudio: no modo "Somente da guia" o som só vai junto ao compartilhar uma guia do navegador. Use "Trocar tela" e escolha uma guia.'
+      : 'Transmitindo sem áudio. Use "Trocar tela" e marque a opção de compartilhar áudio no seletor.';
+  toast(message, 'warn', 7000);
 }
 
 function leaveLive(reason) {
@@ -423,7 +462,7 @@ function renderHostHud() {
   hud.set('fps', formatFps(summary.frameRate));
   hud.set('viewers', String(summary.viewers));
   hud.set('upload', formatMbps(summary.uploadBps));
-  hud.set('audio', summary.hasAudio ? 'capturando' : 'sem áudio');
+  hud.set('audio', summary.hasAudio ? (summary.surface === 'browser' ? 'da guia' : 'do sistema') : 'sem áudio');
   if (summary.viewers === 0) hud.setHealth('idle', 'Sem espectadores');
   else hud.setHealth(summary.health);
 }
@@ -511,7 +550,7 @@ function startViewer(room) {
   const hud = new StatsHUD($('#viewer-hud'));
 
   $('#viewer-room').textContent = room;
-  hud.setVisible(storage.get('hud-visible', true));
+  hud.setVisible(storage.get('stats-visible', false));
   hudButton.setAttribute('aria-pressed', String(hud.visible));
 
   const session = new ViewerSession({
@@ -583,7 +622,7 @@ function startViewer(room) {
   const toggleHud = () => {
     hud.setVisible(!hud.visible);
     hudButton.setAttribute('aria-pressed', String(hud.visible));
-    storage.set('hud-visible', hud.visible);
+    storage.set('stats-visible', hud.visible);
   };
   hudButton.addEventListener('click', toggleHud);
 

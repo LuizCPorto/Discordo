@@ -19,7 +19,7 @@ export const DEFAULT_HOST_SETTINGS = Object.freeze({
   codec: 'auto',
   degradationPreference: 'balanced',
   contentHint: 'motion',
-  captureAudio: true,
+  audioSource: 'tab',
 });
 
 const CLEAN_AUDIO_CONSTRAINTS = Object.freeze({
@@ -274,17 +274,24 @@ export function buildVideoConstraints({ resolution, fps }) {
   return constraints;
 }
 
-/** Deve ser chamada de forma síncrona dentro do gesto do usuário (exigência do Safari). */
+/**
+ * Deve ser chamada de forma síncrona dentro do gesto do usuário (exigência do Safari).
+ * audioSource 'tab': o seletor abre na aba de guias e o áudio do sistema não é oferecido,
+ * então só o som da guia escolhida é transmitido.
+ */
 export function captureScreen(settings) {
   if (!isScreenCaptureSupported()) {
     return Promise.reject(
       Object.assign(new Error('Este navegador não permite compartilhar a tela.'), { name: 'NotSupportedError' }),
     );
   }
+  const source = settings.audioSource ?? DEFAULT_HOST_SETTINGS.audioSource;
+  const includeSystem = source === 'system';
   return navigator.mediaDevices.getDisplayMedia({
-    video: { ...buildVideoConstraints(settings), displaySurface: 'monitor' },
-    audio: settings.captureAudio ? { ...CLEAN_AUDIO_CONSTRAINTS } : false,
-    systemAudio: settings.captureAudio ? 'include' : 'exclude',
+    video: { ...buildVideoConstraints(settings), displaySurface: source === 'tab' ? 'browser' : 'monitor' },
+    audio: source === 'none' ? false : { ...CLEAN_AUDIO_CONSTRAINTS },
+    systemAudio: includeSystem ? 'include' : 'exclude',
+    windowAudio: includeSystem ? 'system' : 'exclude',
     selfBrowserSurface: 'exclude',
     surfaceSwitching: 'include',
     monitorTypeSurfaces: 'include',
@@ -653,6 +660,7 @@ export class HostSession extends EventTarget {
       width: settings.width ?? null,
       height: settings.height ?? null,
       frameRate: settings.frameRate ?? null,
+      surface: settings.displaySurface ?? null,
       viewers: this.#links.size,
       uploadBps,
       health,
