@@ -16,6 +16,8 @@ import {
 const BASE_ICE_SERVERS = Object.freeze([
   { urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] },
 ]);
+// Desligado temporariamente: para religar, mude para true e configure os secrets do Worker (worker/index.js).
+const RELAY_ENABLED = false;
 const RELAY_REFRESH_MS = 3 * 60 * 60 * 1000;
 const RELAY_FETCH_TIMEOUT_MS = 4000;
 
@@ -266,7 +268,7 @@ async function fetchRelayStatus() {
 }
 
 async function loadRelay() {
-  const status = await fetchRelayStatus();
+  const status = RELAY_ENABLED ? await fetchRelayStatus() : { turn: false, reason: 'disabled' };
   relay.status = status;
   relay.servers = status.turn ? [...BASE_ICE_SERVERS, ...status.iceServers] : [...BASE_ICE_SERVERS];
   relay.listeners.forEach((listener) => listener(relay));
@@ -275,7 +277,7 @@ async function loadRelay() {
 
 // As credenciais expiram em 4 h; renova a cada 3 h para transmissões longas não caírem.
 function keepRelayFresh() {
-  setInterval(loadRelay, RELAY_REFRESH_MS);
+  if (RELAY_ENABLED) setInterval(loadRelay, RELAY_REFRESH_MS);
 }
 
 function formatDay(iso) {
@@ -288,6 +290,8 @@ function describeRelay(status) {
     return { tone: 'good', text: `Conexão para 4G/5G ativa · ${status.usedGB ?? 0} de ${status.limitGB} GB usados neste mês` };
   }
   switch (status.reason) {
+    case 'disabled':
+      return { tone: 'warn', text: 'Assistir pelo 4G/5G está temporariamente desativado. Seus amigos precisam estar no Wi-Fi.' };
     case 'limit':
       return {
         tone: 'warn',
@@ -307,6 +311,9 @@ function describeRelay(status) {
 
 /** Mensagem para o viewer quando a conexão de vídeo não consegue ser estabelecida. */
 function connectionFailureHint(status) {
+  if (status?.reason === 'disabled') {
+    return 'Não foi possível conectar. Assistir pelo 4G/5G está temporariamente desativado; conecte-se a um Wi-Fi.';
+  }
   if (status?.reason === 'limit') {
     return `Não foi possível conectar. Assistir pelo 4G/5G está desativado até ${formatDay(status.resetsAt)} porque o limite mensal foi atingido. Tente pelo Wi-Fi.`;
   }
