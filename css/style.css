@@ -515,14 +515,13 @@ body[data-view="loading"] .topbar {
   padding: 10px 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
-  background: rgba(8, 9, 11, 0.62);
+  /* Fundo sólido em vez de backdrop-filter: desfoque sobre vídeo obriga recompor cada quadro (pesa no iPhone). */
+  background: rgba(8, 9, 11, 0.8);
   color: #d7dae1;
   font: 12px/1.5 var(--mono);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  transition: opacity 0.2s, transform 0.2s;
+  transition: opacity 0.2s, transform 0.2s, visibility 0.2s;
 }
 
 .host-stage .hud {
@@ -531,6 +530,7 @@ body[data-view="loading"] .topbar {
 }
 
 .hud.is-hidden {
+  visibility: hidden;
   opacity: 0;
   transform: translateY(-6px);
 }
@@ -921,10 +921,11 @@ body[data-view="loading"] .topbar {
   gap: 8px;
   padding: 40px calc(16px + var(--safe-r)) calc(14px + var(--safe-b)) calc(16px + var(--safe-l));
   background: linear-gradient(to top, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0));
-  transition: opacity 0.3s;
+  transition: opacity 0.3s, visibility 0.3s;
 }
 
 .viewer-stage.is-idle .controls {
+  visibility: hidden;
   opacity: 0;
   pointer-events: none;
 }
@@ -945,16 +946,14 @@ body[data-view="loading"] .topbar {
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.09);
+  background: rgba(30, 33, 40, 0.85);
   color: #fff;
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   transition: background-color 0.15s;
 }
 
 .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.17);
+  background: rgba(52, 57, 68, 0.9);
 }
 
 .icon-btn svg {

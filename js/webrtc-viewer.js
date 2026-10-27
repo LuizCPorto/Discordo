@@ -7,6 +7,53 @@ const RETRY_DELAY_MS = 3000;
 const DIAL_TIMEOUT_MS = 12000;
 const FAILED_GRACE_MS = 15000;
 const ABR_FRESHNESS_MS = 6000;
+// Celulares não ganham nada acima de Full HD/60: o Safari limita páginas a 60 Hz e a tela é pequena.
+const MOBILE_SHORT_SIDE_CAP = 1080;
+const MOBILE_MAX_FPS = 60;
+const DEVICE_CODEC_PROBES = Object.freeze([
+  ['vp9', 'video/VP9'],
+  ['av1', 'video/AV1'],
+  ['h264', 'video/H264'],
+]);
+
+export function isMobileDevice() {
+  const ua = navigator.userAgent;
+  const byUa = /iPhone|iPad|iPod|Android|Mobile/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  return navigator.userAgentData?.mobile || byUa;
+}
+
+/** Limites de exibição enviados ao host para que ele não codifique pixels/quadros que o aparelho descarta. */
+export function describeDisplay() {
+  if (!isMobileDevice()) return null;
+  const dpr = window.devicePixelRatio || 1;
+  const long = Math.round(Math.max(screen.width, screen.height) * dpr);
+  const short = Math.round(Math.min(screen.width, screen.height) * dpr);
+  const cappedShort = Math.min(short, MOBILE_SHORT_SIDE_CAP);
+  return { long: Math.round((long * cappedShort) / short), short: cappedShort, maxFps: MOBILE_MAX_FPS };
+}
+
+/**
+ * Em celulares, escolhe o primeiro codec decodificado por hardware (powerEfficient);
+ * decodificar VP9/AV1 por software esquenta o aparelho e derruba quadros. H.264 é o fallback.
+ * Em desktops retorna null e a ordem automática do host é mantida.
+ */
+async function preferredCodecForDevice() {
+  if (!isMobileDevice()) return null;
+  const capabilities = navigator.mediaCapabilities;
+  if (typeof capabilities?.decodingInfo !== 'function') return 'h264';
+  for (const [mode, contentType] of DEVICE_CODEC_PROBES) {
+    try {
+      const info = await capabilities.decodingInfo({
+        type: 'webrtc',
+        video: { contentType, width: 1920, height: 1080, bitrate: 8_000_000, framerate: 60 },
+      });
+      if (info.supported && info.powerEfficient) return mode;
+    } catch {
+      break;
+    }
+  }
+  return 'h264';
+}
 
 export function describeClient() {
   const ua = navigator.userAgent;
@@ -47,6 +94,8 @@ export class ViewerSession extends EventTarget {
   #audioBlocked = false;
   #muted = false;
   #volume = 1;
+  #statsEnabled = false;
+  #deviceCodec;
 
   constructor({ roomId, hostPeerId, iceServers, video }) {
     super();
@@ -54,6 +103,15 @@ export class ViewerSession extends EventTarget {
     this.hostPeerId = hostPeerId;
     this.iceServers = iceServers;
     this.video = video;
+    this.#deviceCodec = preferredCodecForDevice().catch(() => null);
+  }
+
+  /** As estatísticas só são lidas com o HUD visível, para não gastar CPU à toa no celular. */
+  setStatsEnabled(enabled) {
+    this.#statsEnabled = enabled;
+    if (!this.#monitor) return;
+    if (enabled && this.#pc?.connectionState === 'connected') this.#monitor.start();
+    else if (!enabled) this.#monitor.stop();
   }
 
   get state() {
@@ -170,7 +228,7 @@ export class ViewerSession extends EventTarget {
     const conn = this.#peer.connect(this.hostPeerId, {
       serialization: 'json',
       reliable: true,
-      metadata: { device: describeClient() },
+      metadata: { device: describeClient(), display: describeDisplay() },
     });
     this.#conn = conn;
 
@@ -259,9 +317,12 @@ export class ViewerSession extends EventTarget {
     const pc = this.#pc ?? this.#createPeerConnection();
     await pc.setRemoteDescription({ type: 'offer', sdp: message.sdp });
 
-    // Mesma ordem de preferência do host: o answer define o codec que o host vai usar para enviar.
+    // O answer define o codec que o host vai usar para enviar. No modo automático, celulares
+    // priorizam o codec com decodificação por hardware; uma escolha manual do host é respeitada.
+    const hostMode = message.codec ?? 'auto';
+    const mode = hostMode === 'auto' ? (await this.#deviceCodec) ?? 'auto' : hostMode;
     const videoTransceiver = pc.getTransceivers().find((t) => t.receiver.track?.kind === 'video');
-    if (videoTransceiver) applyCodecPreferences(videoTransceiver, message.codec ?? 'auto', { direction: 'recv' });
+    if (videoTransceiver) applyCodecPreferences(videoTransceiver, mode, { direction: 'recv' });
 
     const answer = await pc.createAnswer();
     await setLocalDescriptionTuned(pc, answer);
@@ -323,7 +384,7 @@ export class ViewerSession extends EventTarget {
 
     if (state === 'connected') {
       this.#setStatus('live', 'Ao vivo');
-      this.#monitor.start();
+      if (this.#statsEnabled) this.#monitor.start();
       this.#requestPlay();
     } else if (state === 'disconnected') {
       this.#setStatus('reconnecting', 'Instabilidade na rede. Reconectando…');

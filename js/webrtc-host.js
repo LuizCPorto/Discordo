@@ -298,6 +298,17 @@ export function captureScreen(settings) {
   });
 }
 
+// Limites de tela informados pelo viewer (só celulares enviam); valores fora da faixa são ignorados.
+function sanitizeDisplayCap(display) {
+  const inRange = (value, min, max) => Number.isFinite(value) && value >= min && value <= max;
+  if (!display || !inRange(display.long, 320, 8192) || !inRange(display.short, 240, 8192)) return null;
+  return {
+    long: Math.max(display.long, display.short),
+    short: Math.min(display.long, display.short),
+    maxFps: inRange(display.maxFps, 15, 240) ? display.maxFps : null,
+  };
+}
+
 function addTransceiverSafe(pc, trackOrKind, init) {
   try {
     return pc.addTransceiver(trackOrKind, init);
@@ -327,6 +338,7 @@ class HostPeerLink {
     this.conn = conn;
     this.id = conn.peer;
     this.label = conn.metadata?.device || 'Espectador';
+    this.displayCap = sanitizeDisplayCap(conn.metadata?.display);
     this.pc = null;
     this.video = null;
     this.audio = null;
@@ -375,6 +387,7 @@ class HostPeerLink {
       maxBitrate: settings.maxBitrate,
       maxFramerate: settings.fps,
       degradationPreference: settings.degradationPreference,
+      displayCap: this.displayCap,
       onUpdate: (snapshot) => this.#onAbrUpdate(snapshot),
     });
     this.abr.start();
@@ -426,6 +439,7 @@ class HostPeerLink {
     if (previous.qualityMode !== next.qualityMode) this.abr.setMode(next.qualityMode);
     if (previous.maxBitrate !== next.maxBitrate) this.abr.setMaxBitrate(next.maxBitrate);
     if (previous.fps !== next.fps) this.abr.setMaxFramerate(next.fps);
+    else if (previous.resolution !== next.resolution) this.abr.reapply();
     if (previous.degradationPreference !== next.degradationPreference) {
       this.abr.setDegradationPreference(next.degradationPreference);
     }

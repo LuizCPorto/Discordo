@@ -32,6 +32,7 @@ export class AdaptiveQualityController {
   #scaleIndex = 0;
   #maxFramerate;
   #degradation;
+  #displayCap;
 
   #stableSince = null;
   #floorTicks = 0;
@@ -49,9 +50,11 @@ export class AdaptiveQualityController {
     maxBitrate = ABR_DEFAULTS.maxBitrate,
     maxFramerate = 60,
     degradationPreference = 'balanced',
+    displayCap = null,
     onUpdate = null,
     ...overrides
   }) {
+    this.#displayCap = displayCap;
     this.#pc = pc;
     this.#videoSender = videoSender;
     this.#audioSender = audioSender;
@@ -76,8 +79,23 @@ export class AdaptiveQualityController {
     return this.#bitrate;
   }
 
+  /** Escala efetiva: ajuste à tela do viewer × degrau de congestionamento. */
   get scale() {
-    return this.#opts.scaleSteps[this.#scaleIndex];
+    return Math.round(this.#displayScale * this.#opts.scaleSteps[this.#scaleIndex] * 100) / 100;
+  }
+
+  // Reduz a captura até caber na tela do aparelho (ex.: 1440p → ~1080p num celular).
+  get #displayScale() {
+    const cap = this.#displayCap;
+    const { width, height } = this.#videoSender?.track?.getSettings?.() ?? {};
+    if (!cap || !width || !height) return 1;
+    const ratio = Math.max(Math.max(width, height) / cap.long, Math.min(width, height) / cap.short);
+    return ratio > 1.05 ? ratio : 1;
+  }
+
+  get #effectiveFramerate() {
+    const capFps = this.#displayCap?.maxFps;
+    return capFps ? Math.min(this.#maxFramerate, capFps) : this.#maxFramerate;
   }
 
   get #canScale() {
@@ -232,7 +250,7 @@ export class AdaptiveQualityController {
     for (const enc of params.encodings) {
       enc.active = true;
       enc.maxBitrate = Math.round(this.#bitrate);
-      enc.maxFramerate = this.#maxFramerate;
+      enc.maxFramerate = this.#effectiveFramerate;
       enc.scaleResolutionDownBy = this.scale;
     }
     if (includeDegradation && this.#degradation) params.degradationPreference = this.#degradation;

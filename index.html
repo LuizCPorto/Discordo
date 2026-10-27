@@ -11,8 +11,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Discordo · Tela P2P</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235b8cff'/%3E%3Crect x='8' y='9' width='16' height='11' rx='1.5' fill='none' stroke='%230a0b0d' stroke-width='2.4'/%3E%3Cpath d='M12.5 24h7' stroke='%230a0b0d' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+  <!-- Abre as conexões com o CDN e o servidor de sinalização em paralelo ao carregamento da página. -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://0.peerjs.com" crossorigin>
   <link rel="stylesheet" href="css/style.css">
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
   <script type="module" src="js/app.js"></script>
 </head>
 <body data-view="loading">

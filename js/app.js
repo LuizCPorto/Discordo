@@ -560,6 +560,8 @@ function startViewer(room) {
     video,
   });
 
+  session.setStatsEnabled(hud.visible);
+
   const syncMute = () => {
     const muted = video.muted;
     muteButton.dataset.muted = String(muted);
@@ -621,6 +623,7 @@ function startViewer(room) {
 
   const toggleHud = () => {
     hud.setVisible(!hud.visible);
+    session.setStatsEnabled(hud.visible);
     hudButton.setAttribute('aria-pressed', String(hud.visible));
     storage.set('stats-visible', hud.visible);
   };
