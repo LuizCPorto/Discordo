@@ -5,8 +5,8 @@ Aplicação web P2P (Peer-to-Peer) minimalista e de alta performance para compar
 
 ## Stack Tecnológica
 - **Frontend:** HTML5, CSS3 (Dark Mode / Theater Mode) e Vanilla JavaScript (ES6+ Modules).
-- **Hospedagem:** Cloudflare Pages (100% estático).
-- **Comunicação P2P & Sinalização:** PeerJS (broker público gratuito + STUN do Google + TURN OpenRelay como fallback).
+- **Hospedagem:** Cloudflare Workers com Static Assets (site estático + um Worker mínimo em `worker/index.js` só para emitir credenciais TURN).
+- **Comunicação P2P & Sinalização:** PeerJS (broker público gratuito, usado só como canal de sinalização) + STUN do Google/Cloudflare + TURN da Cloudflare Realtime via `/api/turn`, com bloqueio automático ao atingir 900 GB/mês (franquia gratuita: 1.000 GB).
 - **APIs Nativas:** `navigator.mediaDevices.getDisplayMedia`, `RTCPeerConnection`, `RTCRtpTransceiver` e `RTCStatsReport`.
 
 ## Regras Críticas de Implementação (WebRTC High-Performance & Adaptativo)

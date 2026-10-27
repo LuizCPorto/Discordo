@@ -43,6 +43,9 @@ const MANUAL_CODECS = Object.freeze({ av1: 'VIDEO/AV1', vp9: 'VIDEO/VP9', h264: 
 const AUX_CODECS = new Set(['VIDEO/RTX', 'VIDEO/RED', 'VIDEO/ULPFEC', 'VIDEO/FLEXFEC-03']);
 const ROOM_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 
+// Modo economia de dados do viewer: ~1,8 GB por hora em vez de ~9 GB a 20 Mbps.
+export const DATA_SAVER_BITRATE = 4_000_000;
+
 const DISCONNECT_GRACE_MS = 4000;
 const FAILED_DROP_MS = 25000;
 const ENDED_FLUSH_MS = 250;
@@ -339,6 +342,7 @@ class HostPeerLink {
     this.id = conn.peer;
     this.label = conn.metadata?.device || 'Espectador';
     this.displayCap = sanitizeDisplayCap(conn.metadata?.display);
+    this.dataSaver = false;
     this.pc = null;
     this.video = null;
     this.audio = null;
@@ -426,6 +430,11 @@ class HostPeerLink {
         if (typeof message.device === 'string' && message.device) this.label = message.device.slice(0, 60);
         this.#session.notifyViewersChanged();
         break;
+      case 'prefs':
+        this.dataSaver = message.dataSaver === true;
+        this.abr?.setBitrateCap(this.dataSaver ? DATA_SAVER_BITRATE : null);
+        this.#session.notifyViewersChanged();
+        break;
       case 'bye':
         this.#session.dropLink(this);
         break;
@@ -446,6 +455,16 @@ class HostPeerLink {
     if (previous.codec !== next.codec) {
       this.codec = applyCodecPreferences(this.video, next.codec);
       this.negotiate();
+    }
+  }
+
+  /** Credenciais TURN renovadas valem para alocações futuras desta conexão (ex.: após um ICE restart). */
+  setIceServers(iceServers) {
+    if (!this.pc || this.#closed) return;
+    try {
+      this.pc.setConfiguration({ ...this.pc.getConfiguration(), iceServers });
+    } catch (err) {
+      console.warn('[host] setConfiguration recusado', err);
     }
   }
 
@@ -578,6 +597,11 @@ export class HostSession extends EventTarget {
 
   get iceServers() {
     return this.#iceServers;
+  }
+
+  setIceServers(iceServers) {
+    this.#iceServers = iceServers;
+    for (const link of this.#links.values()) link.setIceServers(iceServers);
   }
 
   get roomId() {

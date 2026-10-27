@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0b0d">
-  <meta name="description" content="Compartilhamento de tela P2P em resolução nativa e até 120 FPS, direto entre amigos.">
+  <meta name="description" content="Compartilhe sua tela com os amigos em alta resolução e até 120 FPS.">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Discordo · Tela P2P</title>
+  <title>Discordo · Compartilhar tela</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235b8cff'/%3E%3Crect x='8' y='9' width='16' height='11' rx='1.5' fill='none' stroke='%230a0b0d' stroke-width='2.4'/%3E%3Cpath d='M12.5 24h7' stroke='%230a0b0d' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
   <!-- Abre as conexões com o CDN e o servidor de sinalização em paralelo ao carregamento da página. -->
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -32,11 +32,11 @@
   <section class="view view-setup" data-view="host-setup" hidden>
     <div class="setup">
       <div class="setup-intro">
-        <p class="eyebrow">P2P direto · sem servidor de mídia</p>
+        <p class="eyebrow">Compartilhamento de tela entre amigos</p>
         <h1>Sua tela em resolução nativa, a 60 ou 120 FPS.</h1>
         <p class="lede">
-          O vídeo sai do seu navegador direto para o dos seus amigos. Cada espectador recebe a
-          própria qualidade, ajustada à rede dele — quem tem internet boa não paga pela de quem não tem.
+          Mande o link e seus amigos assistem na hora, pelo PC ou pelo celular, sem instalar nada.
+          Cada um recebe a melhor qualidade que a internet dele aguenta.
         </p>
 
         <form id="join-form" class="join" autocomplete="off">
@@ -140,6 +140,7 @@
           <button type="button" id="copy-link" class="btn btn-primary">Copiar</button>
         </div>
         <button type="button" id="share-native" class="btn btn-ghost btn-block" hidden>Compartilhar…</button>
+        <p class="relay-status" id="relay-status" data-tone="idle" role="status"></p>
       </div>
 
       <div class="panel-block">
@@ -251,6 +252,9 @@
         </button>
         <input type="range" class="volume" id="volume" min="0" max="1" step="0.01" value="1" aria-label="Volume">
         <span class="controls-spacer"></span>
+        <button type="button" class="icon-btn" id="btn-saver" aria-pressed="false" aria-label="Economia de dados" title="Economia de dados">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <button type="button" class="icon-btn" id="btn-hud" aria-pressed="false" aria-label="Mostrar ou ocultar estatísticas" title="Estatísticas (H)">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V11M12 19V5M19 19v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         </button>
@@ -264,11 +268,11 @@
     </div>
   </section>
 
-  <!-- ===================================================== Falha ao carregar o PeerJS -->
+  <!-- ===================================================== Falha ao carregar a biblioteca de conexão (PeerJS) -->
   <section class="view view-fatal" data-view="fatal" hidden>
     <div class="card fatal-card">
-      <h1>Não foi possível carregar o PeerJS</h1>
-      <p>A biblioteca de sinalização vem de um CDN que parece estar bloqueado ou fora do ar. Desative bloqueadores de conteúdo para este site e recarregue a página.</p>
+      <h1>Não foi possível carregar a página</h1>
+      <p>Uma parte necessária do site não carregou. Desative bloqueadores de anúncio para este site, confira sua internet e recarregue a página.</p>
       <button type="button" class="btn btn-primary" onclick="location.reload()">Recarregar</button>
     </div>
   </section>

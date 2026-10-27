@@ -659,6 +659,36 @@ body[data-view="loading"] .topbar {
   letter-spacing: 0.04em;
 }
 
+.relay-status {
+  display: flex;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.relay-status::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.relay-status[data-tone="good"]::before {
+  background: var(--good);
+}
+
+.relay-status[data-tone="warn"] {
+  color: #f3d58a;
+}
+
+.relay-status[data-tone="warn"]::before {
+  background: var(--warn);
+}
+
 .count {
   min-width: 26px;
   padding: 1px 8px;
@@ -963,6 +993,10 @@ body[data-view="loading"] .topbar {
 
 .icon-btn[aria-pressed="false"] {
   color: var(--muted);
+}
+
+#btn-saver[aria-pressed="true"] {
+  color: var(--good);
 }
 
 #btn-mute .icon-muted,

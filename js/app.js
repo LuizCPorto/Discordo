@@ -1,7 +1,7 @@
 // Roteamento (?room=...), estado da UI e inicialização das sessões de host/viewer.
 
-import { HostSession, DEFAULT_HOST_SETTINGS, isScreenCaptureSupported } from './webrtc-host.js';
-import { ViewerSession } from './webrtc-viewer.js';
+import { HostSession, DEFAULT_HOST_SETTINGS, DATA_SAVER_BITRATE, isScreenCaptureSupported } from './webrtc-host.js';
+import { ViewerSession, isMobileDevice } from './webrtc-viewer.js';
 import {
   StatsHUD,
   HEALTH_LABELS,
@@ -12,19 +12,12 @@ import {
   formatMs,
 } from './stats.js';
 
-const ICE_SERVERS = Object.freeze([
-  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-  { urls: 'stun:openrelay.metered.ca:80' },
-  {
-    urls: [
-      'turn:openrelay.metered.ca:80',
-      'turn:openrelay.metered.ca:443',
-      'turn:openrelay.metered.ca:443?transport=tcp',
-    ],
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
+// STUN gratuito e ilimitado. O TURN (necessário em 4G/5G) vem do Worker em /api/turn, com limite mensal.
+const BASE_ICE_SERVERS = Object.freeze([
+  { urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] },
 ]);
+const RELAY_REFRESH_MS = 3 * 60 * 60 * 1000;
+const RELAY_FETCH_TIMEOUT_MS = 4000;
 
 const PEER_PREFIX = 'discordo-v1-';
 const ROOM_PATTERN = /^[a-z0-9]{4,32}$/;
@@ -242,9 +235,83 @@ function describeStartError(err) {
     default:
       break;
   }
-  if (err?.type === 'peerjs-missing') return 'O PeerJS não carregou. Verifique sua conexão ou bloqueadores de conteúdo.';
-  if (err?.type) return 'Falha ao conectar ao servidor de sinalização. Tente novamente em instantes.';
+  if (err?.type === 'peerjs-missing') return 'Uma parte do site não carregou. Desative bloqueadores de anúncio e recarregue a página.';
+  if (err?.type) return 'Não foi possível abrir a sala. Verifique sua internet e tente novamente.';
   return 'Não foi possível iniciar a transmissão.';
+}
+
+/* ----------------------------------------------------------------------------
+ * Servidor de apoio (TURN) para quem está em 4G/5G
+ * ------------------------------------------------------------------------- */
+
+const relay = {
+  status: null,
+  servers: [...BASE_ICE_SERVERS],
+  listeners: new Set(),
+};
+
+async function fetchRelayStatus() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), RELAY_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch('/api/turn', { cache: 'no-store', signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } catch (err) {
+    console.warn('[app] servidor de apoio indisponível', err);
+    return { turn: false, reason: 'unavailable' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function loadRelay() {
+  const status = await fetchRelayStatus();
+  relay.status = status;
+  relay.servers = status.turn ? [...BASE_ICE_SERVERS, ...status.iceServers] : [...BASE_ICE_SERVERS];
+  relay.listeners.forEach((listener) => listener(relay));
+  return relay;
+}
+
+// As credenciais expiram em 4 h; renova a cada 3 h para transmissões longas não caírem.
+function keepRelayFresh() {
+  setInterval(loadRelay, RELAY_REFRESH_MS);
+}
+
+function formatDay(iso) {
+  return iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
+}
+
+function describeRelay(status) {
+  if (!status) return { tone: 'idle', text: 'Verificando conexão para 4G/5G…' };
+  if (status.turn) {
+    return { tone: 'good', text: `Conexão para 4G/5G ativa · ${status.usedGB ?? 0} de ${status.limitGB} GB usados neste mês` };
+  }
+  switch (status.reason) {
+    case 'limit':
+      return {
+        tone: 'warn',
+        text: `Conexão para 4G/5G desativada: o limite mensal de ${status.limitGB} GB foi atingido. Volta em ${formatDay(status.resetsAt)}. Quem está no Wi-Fi assiste normalmente.`,
+      };
+    case 'usage-unknown':
+      return {
+        tone: 'warn',
+        text: 'Conexão para 4G/5G desativada por segurança: não foi possível verificar o consumo do mês. Quem está no Wi-Fi assiste normalmente.',
+      };
+    case 'not-configured':
+      return { tone: 'warn', text: 'Conexão para 4G/5G não configurada. Por enquanto, só Wi-Fi.' };
+    default:
+      return { tone: 'warn', text: 'Conexão para 4G/5G indisponível no momento. Quem está no Wi-Fi assiste normalmente.' };
+  }
+}
+
+/** Mensagem para o viewer quando a conexão de vídeo não consegue ser estabelecida. */
+function connectionFailureHint(status) {
+  if (status?.reason === 'limit') {
+    return `Não foi possível conectar. Assistir pelo 4G/5G está desativado até ${formatDay(status.resetsAt)} porque o limite mensal foi atingido. Tente pelo Wi-Fi.`;
+  }
+  if (status && !status.turn) return 'Não foi possível conectar. Assistir pelo 4G/5G está indisponível agora; tente pelo Wi-Fi.';
+  return 'Não foi possível conectar ao vídeo. Tentando de novo…';
 }
 
 /* ----------------------------------------------------------------------------
@@ -349,6 +416,15 @@ function setupHost() {
 
   $('#stop-broadcast').addEventListener('click', () => host.session?.stop('host-stopped'));
 
+  relay.listeners.add(({ status, servers }) => {
+    renderRelayStatus(status);
+    // Só repassa credenciais válidas: sem TURN, as conexões atuais seguem até as credenciais expirarem.
+    if (status.turn) host.session?.setIceServers(servers);
+  });
+  renderRelayStatus(null);
+  loadRelay();
+  keepRelayFresh();
+
   window.addEventListener('pagehide', () => host.session?.stop('host-left'));
   window.addEventListener('beforeunload', (event) => {
     if (host.session?.active && host.session.viewers.length) {
@@ -364,7 +440,7 @@ function startBroadcast(settings) {
   button.disabled = true;
   button.textContent = 'Escolha a tela…';
 
-  const session = new HostSession({ iceServers: ICE_SERVERS, peerPrefix: PEER_PREFIX, settings });
+  const session = new HostSession({ iceServers: relay.servers, peerPrefix: PEER_PREFIX, settings });
   const started = session.start();
   // A partir daqui a captura já foi solicitada; o restante pode ser assíncrono.
   button.textContent = 'Abrindo sala…';
@@ -411,8 +487,8 @@ function enterLive(session) {
     warnAboutAudio(session);
   });
   session.addEventListener('signaling', (event) => {
-    if (event.detail.state === 'reconnecting') toast('Servidor de sinalização caiu. Quem já está assistindo continua; reconectando…', 'warn');
-    else toast('Sinalização restabelecida.', 'success');
+    if (event.detail.state === 'reconnecting') toast('A conexão com o servidor caiu. Quem já está assistindo continua; reconectando…', 'warn');
+    else toast('Conexão com o servidor restabelecida.', 'success');
   });
   session.addEventListener('ended', (event) => leaveLive(event.detail.reason), { once: true });
 
@@ -421,6 +497,13 @@ function enterLive(session) {
   renderHostHud();
   host.hudTimer = setInterval(renderHostHud, 1000);
   warnAboutAudio(session);
+}
+
+function renderRelayStatus(status) {
+  const el = $('#relay-status');
+  const { tone, text } = describeRelay(status);
+  el.dataset.tone = tone;
+  el.textContent = text;
 }
 
 function setHostStatsVisible(visible) {
@@ -449,7 +532,7 @@ function leaveLive(reason) {
   $('#host-preview').srcObject = null;
   $('#viewer-list').replaceChildren();
   $('#live-badge').hidden = true;
-  document.title = 'Discordo · Tela P2P';
+  document.title = 'Discordo · Compartilhar tela';
   showView('host-setup');
   toast(reason === 'capture-ended' ? 'A captura da tela foi interrompida. Transmissão encerrada.' : 'Transmissão encerrada.');
 }
@@ -514,6 +597,7 @@ function updateViewerItem(link, item = $(`#viewer-list .viewer[data-id="${CSS.es
   item.dataset.health = snapshot.health;
   const notes = [];
   if (snapshot.mode === 'manual') notes.push('manual');
+  if (link.dataSaver) notes.push('economia de dados');
   if (snapshot.scale > 1) notes.push(`escala ÷${snapshot.scale}`);
   if (sample.qualityLimitation === 'cpu') notes.push('limitado por CPU');
   const base = snapshot.mode === 'manual' ? 'Bitrate fixo' : HEALTH_LABELS[snapshot.health];
@@ -556,11 +640,39 @@ function startViewer(room) {
   const session = new ViewerSession({
     roomId: room,
     hostPeerId: PEER_PREFIX + room,
-    iceServers: ICE_SERVERS,
+    iceServers: relay.servers,
     video,
   });
 
   session.setStatsEnabled(hud.visible);
+
+  // Economia de dados: ligada por padrão no celular, já que boa parte usa 4G/5G.
+  const saverButton = $('#btn-saver');
+  const syncSaver = (enabled) => {
+    saverButton.setAttribute('aria-pressed', String(enabled));
+    saverButton.title = enabled ? 'Economia de dados: ligada' : 'Economia de dados: desligada';
+  };
+  let dataSaver = storage.get('data-saver', isMobileDevice() || navigator.connection?.saveData === true);
+  session.setDataSaver(dataSaver);
+  syncSaver(dataSaver);
+  saverButton.addEventListener('click', () => {
+    dataSaver = !dataSaver;
+    session.setDataSaver(dataSaver);
+    syncSaver(dataSaver);
+    storage.set('data-saver', dataSaver);
+    const mbps = DATA_SAVER_BITRATE / 1e6;
+    toast(
+      dataSaver
+        ? `Economia de dados ligada: até ${mbps} Mbps (cerca de ${((DATA_SAVER_BITRATE * 3600) / 8 / 1e9).toFixed(1)} GB por hora).`
+        : 'Economia de dados desligada: qualidade máxima.',
+    );
+  });
+
+  // Credenciais renovadas entram nas conexões já abertas.
+  relay.listeners.add(({ status, servers }) => {
+    if (status.turn) session.setIceServers(servers);
+  });
+  let iceFailed = false;
 
   const syncMute = () => {
     const muted = video.muted;
@@ -570,10 +682,13 @@ function startViewer(room) {
   };
 
   session.addEventListener('status', (event) => {
-    const { state, message } = event.detail;
+    const { state, message, reason } = event.detail;
+    if (reason === 'ice-failed') iceFailed = true;
+    if (state === 'live' || state === 'ended') iceFailed = false;
     stage.dataset.state = state;
     $('#viewer-status').hidden = state === 'live';
-    $('#viewer-status-text').textContent = message;
+    // Depois de uma falha de conexão de vídeo, mantém a explicação (ex.: 4G sem servidor de apoio) até conectar.
+    $('#viewer-status-text').textContent = iceFailed ? connectionFailureHint(relay.status) : message;
     $('#viewer-retry').hidden = !(state === 'ended' || state === 'error');
     if (state === 'ended') unlock.hidden = true;
   });
@@ -693,7 +808,12 @@ function startViewer(room) {
   });
 
   syncMute();
-  session.connect();
+  // O servidor de apoio precisa estar carregado antes de conectar; sem resposta em 4 s, segue só com STUN.
+  loadRelay().then(() => {
+    session.setIceServers(relay.servers);
+    session.connect();
+  });
+  keepRelayFresh();
 }
 
 let wakeLock = null;

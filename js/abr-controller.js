@@ -28,6 +28,7 @@ export class AdaptiveQualityController {
 
   #mode;
   #maxBitrate;
+  #bitrateCap = null;
   #bitrate;
   #scaleIndex = 0;
   #maxFramerate;
@@ -93,6 +94,10 @@ export class AdaptiveQualityController {
     return ratio > 1.05 ? ratio : 1;
   }
 
+  get #ceiling() {
+    return this.#bitrateCap ? Math.min(this.#maxBitrate, this.#bitrateCap) : this.#maxBitrate;
+  }
+
   get #effectiveFramerate() {
     const capFps = this.#displayCap?.maxFps;
     return capFps ? Math.min(this.#maxFramerate, capFps) : this.#maxFramerate;
@@ -123,7 +128,7 @@ export class AdaptiveQualityController {
     this.#stableSince = null;
     this.#floorTicks = 0;
     if (this.#mode === 'manual') {
-      this.#bitrate = this.#maxBitrate;
+      this.#bitrate = this.#ceiling;
       this.#scaleIndex = 0;
     }
     return this.#applyVideo();
@@ -132,7 +137,14 @@ export class AdaptiveQualityController {
   setMaxBitrate(bps) {
     this.#maxBitrate = Math.max(this.#opts.minBitrate, bps);
     // Em modo automático, ao subir o teto, o controlador sobe sozinho após a janela de estabilidade.
-    if (this.#mode === 'manual' || this.#bitrate > this.#maxBitrate) this.#bitrate = this.#maxBitrate;
+    if (this.#mode === 'manual' || this.#bitrate > this.#ceiling) this.#bitrate = this.#ceiling;
+    return this.#applyVideo();
+  }
+
+  /** Teto extra pedido pelo viewer (modo economia de dados); null remove o teto. */
+  setBitrateCap(bps) {
+    this.#bitrateCap = Number.isFinite(bps) && bps > 0 ? Math.max(this.#opts.minBitrate, bps) : null;
+    if (this.#mode === 'manual' || this.#bitrate > this.#ceiling) this.#bitrate = this.#ceiling;
     return this.#applyVideo();
   }
 
@@ -200,7 +212,7 @@ export class AdaptiveQualityController {
       if (action !== 'hold') await this.#applyVideo();
     }
 
-    const degraded = this.#mode === 'auto' && (this.#bitrate < this.#maxBitrate || this.#scaleIndex > 0);
+    const degraded = this.#mode === 'auto' && (this.#bitrate < this.#ceiling || this.#scaleIndex > 0);
     const health = lossy ? 'critical' : congested || degraded ? 'adjusting' : 'good';
     this.#emit(sample, health, action, lossy, slow);
   }
@@ -236,9 +248,9 @@ export class AdaptiveQualityController {
       this.#scaleIndex -= 1;
       return 'scale-up';
     }
-    if (this.#bitrate < this.#maxBitrate) {
-      const step = Math.max(o.minStepUp, this.#maxBitrate * o.stepUpRatio);
-      this.#bitrate = Math.min(this.#maxBitrate, Math.round(this.#bitrate + step));
+    if (this.#bitrate < this.#ceiling) {
+      const step = Math.max(o.minStepUp, this.#ceiling * o.stepUpRatio);
+      this.#bitrate = Math.min(this.#ceiling, Math.round(this.#bitrate + step));
       return 'bitrate-up';
     }
     return 'hold';
@@ -289,7 +301,8 @@ export class AdaptiveQualityController {
       lossy,
       slow,
       targetBitrate: this.#bitrate,
-      maxBitrate: this.#maxBitrate,
+      maxBitrate: this.#ceiling,
+      bitrateCap: this.#bitrateCap,
       minBitrate: this.#opts.minBitrate,
       scale: this.scale,
       degradationPreference: this.#degradation,

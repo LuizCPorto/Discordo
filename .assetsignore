@@ -2,5 +2,6 @@
 .github
 .assetsignore
 wrangler.jsonc
+worker
 AGENTS.md
 ARCHITECTURE.md

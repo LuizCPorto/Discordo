@@ -41,5 +41,8 @@ Topologia **Star centralizada no Host (1-para-N)** puramente client-side, onde c
 │   ├── abr-controller.js # Motor de ajuste automático de bitrate/resolução baseado na rede
 │   ├── webrtc-viewer.js  # Player compatível com mobile/Safari e desbloqueio de áudio
 │   └── stats.js          # Leitura de getStats() para o HUD e alimentação do motor ABR
+├── worker/
+│   └── index.js          # Serve os arquivos estáticos e emite credenciais TURN (/api/turn) com limite mensal
+├── wrangler.jsonc        # Configuração do deploy no Cloudflare Workers
 ├── AGENTS.md
 └── ARCHITECTURE.md

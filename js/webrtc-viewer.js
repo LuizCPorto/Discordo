@@ -95,6 +95,7 @@ export class ViewerSession extends EventTarget {
   #muted = false;
   #volume = 1;
   #statsEnabled = false;
+  #dataSaver = false;
   #deviceCodec;
 
   constructor({ roomId, hostPeerId, iceServers, video }) {
@@ -104,6 +105,22 @@ export class ViewerSession extends EventTarget {
     this.iceServers = iceServers;
     this.video = video;
     this.#deviceCodec = preferredCodecForDevice().catch(() => null);
+  }
+
+  /** Pede ao host um teto de bitrate menor para esta conexão (economia de dados móveis). */
+  setDataSaver(enabled) {
+    this.#dataSaver = enabled;
+    this.#send({ type: 'prefs', dataSaver: enabled });
+  }
+
+  setIceServers(iceServers) {
+    this.iceServers = iceServers;
+    if (!this.#pc) return;
+    try {
+      this.#pc.setConfiguration({ ...this.#pc.getConfiguration(), iceServers });
+    } catch (err) {
+      console.warn('[viewer] setConfiguration recusado', err);
+    }
   }
 
   /** As estatísticas só são lidas com o HUD visível, para não gastar CPU à toa no celular. */
@@ -129,12 +146,12 @@ export class ViewerSession extends EventTarget {
   async connect() {
     if (this.#destroyed) return;
     this.#ended = false;
-    this.#setStatus('connecting', 'Conectando ao servidor de sinalização…');
+    this.#setStatus('connecting', 'Conectando…');
     try {
       this.#peer = await createPeer(null, this.iceServers);
     } catch (err) {
       console.warn('[viewer] PeerJS indisponível', err);
-      this.#setStatus('error', 'Não foi possível alcançar o servidor de sinalização. Verifique sua conexão.');
+      this.#setStatus('error', 'Sem conexão com o servidor. Verifique sua internet.');
       this.#scheduleRetry(() => this.connect(), RETRY_DELAY_MS * 2);
       return;
     }
@@ -242,8 +259,9 @@ export class ViewerSession extends EventTarget {
     conn.on('open', () => {
       if (this.#conn !== conn) return;
       clearTimeout(this.#dialTimer);
-      this.#setStatus('negotiating', 'Conectado à sala. Negociando vídeo…');
+      this.#setStatus('negotiating', 'Sala encontrada. Preparando o vídeo…');
       conn.send({ type: 'hello', device: describeClient() });
+      conn.send({ type: 'prefs', dataSaver: this.#dataSaver });
     });
     conn.on('data', (message) => {
       if (this.#conn === conn) this.#handle(message);
@@ -270,7 +288,7 @@ export class ViewerSession extends EventTarget {
       case 'server-error':
       case 'socket-error':
       case 'socket-closed':
-        if (this.#state !== 'live') this.#setStatus('reconnecting', 'Sem contato com o servidor de sinalização. Reconectando…');
+        if (this.#state !== 'live') this.#setStatus('reconnecting', 'Conexão instável. Reconectando…');
         this.#scheduleRetry(() => this.#dial(), RETRY_DELAY_MS * 2);
         break;
       default:
@@ -390,7 +408,7 @@ export class ViewerSession extends EventTarget {
       this.#setStatus('reconnecting', 'Instabilidade na rede. Reconectando…');
     } else if (state === 'failed') {
       // O host tenta um ICE restart; se não recuperar a tempo, refazemos a conexão do zero.
-      this.#setStatus('reconnecting', 'Conexão interrompida. Tentando recuperar…');
+      this.#setStatus('reconnecting', 'Conexão interrompida. Tentando recuperar…', 'ice-failed');
       clearTimeout(this.#failTimer);
       this.#failTimer = setTimeout(() => {
         if (this.#pc === pc && pc.connectionState === 'failed') this.#onLinkLost();
@@ -482,9 +500,9 @@ export class ViewerSession extends EventTarget {
     return this.#chain;
   }
 
-  #setStatus(state, message) {
+  #setStatus(state, message, reason = null) {
     this.#state = state;
-    this.#emit('status', { state, message });
+    this.#emit('status', { state, message, reason });
   }
 
   #emit(type, detail = {}) {

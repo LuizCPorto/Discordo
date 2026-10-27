@@ -1,9 +1,13 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "discordo",
+  "main": "worker/index.js",
   "compatibility_date": "2025-09-01",
-  // Site 100% estático: o Worker só serve os arquivos da raiz do repositório.
+  // Arquivos estáticos são servidos direto; só o que não existe (ex.: /api/turn) chega ao Worker.
   "assets": {
-    "directory": "./"
-  }
+    "directory": "./",
+    "binding": "ASSETS"
+  },
+  // Secrets (TURN_KEY_ID, TURN_KEY_API_TOKEN, CF_ACCOUNT_ID, CF_ANALYTICS_TOKEN) ficam no painel.
+  "keep_vars": true
 }
